@@ -3,7 +3,6 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - '.github/workflows/android.yml'
       - 'index.html'
 permissions:
   contents: write
@@ -17,9 +16,15 @@ jobs:
           distribution: temurin
           java-version: '17'
       - name: Build standalone WebView APK
+        env:
+          SIGNING_CONFIG: ${{ secrets.ANDROID_SIGNING_CONFIG }}
         shell: bash
         run: |
-          set -euxo pipefail
+          set -euo pipefail
+          if [ -z "$SIGNING_CONFIG" ]; then
+            echo '::error::Configure the ANDROID_SIGNING_CONFIG repository secret before building.'
+            exit 1
+          fi
           SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
           "$SDK/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
           BT="$SDK/build-tools/35.0.0"
@@ -41,7 +46,7 @@ jobs:
           </vector>
           EOF
           cat > build/AndroidManifest.xml <<'EOF'
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.morphies.miniarena" android:versionCode="4" android:versionName="0.3-alpha.2">
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.morphies.miniarena" android:versionCode="5" android:versionName="0.3-alpha.3">
             <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="35"/>
             <uses-permission android:name="android.permission.VIBRATE"/>
             <application android:label="MORPHIES" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:allowBackup="false" android:icon="@drawable/app_icon" android:roundIcon="@drawable/app_icon">
@@ -83,15 +88,27 @@ jobs:
           "$BT/aapt2" link -I "$JAR" --manifest build/AndroidManifest.xml -A build/assets -o build/unsigned.apk build/resources.zip
           (cd build/dex && zip -j ../unsigned.apk classes.dex)
           "$BT/zipalign" -f -p 4 build/unsigned.apk build/aligned.apk
-          keytool -genkeypair -keystore build/debug.jks -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Morphies Debug"
-          "$BT/apksigner" sign --ks build/debug.jks --ks-pass pass:android --key-pass pass:android --out build/MORPHIES-v0.3-alpha2.apk build/aligned.apk
-          "$BT/apksigner" verify --verbose build/MORPHIES-v0.3-alpha2.apk
+          umask 077
+          trap 'rm -f build/signing.p12' EXIT
+          python3 - <<'PY'
+          import base64, json, os
+          cfg = json.loads(os.environ["SIGNING_CONFIG"])
+          with open("build/signing.p12", "wb") as f:
+              f.write(base64.b64decode(cfg["keystore"], validate=True))
+          PY
+          export KS_PASS="$(python3 -c 'import json, os; print(json.loads(os.environ["SIGNING_CONFIG"])["password"])')"
+          echo "::add-mask::$KS_PASS"
+          unset SIGNING_CONFIG
+          "$BT/apksigner" sign --ks build/signing.p12 --ks-key-alias game-release --ks-pass env:KS_PASS --key-pass env:KS_PASS --out build/MORPHIES-v0.3-alpha3.apk build/aligned.apk
+          unset KS_PASS
+          "$BT/apksigner" verify --verbose --print-certs build/MORPHIES-v0.3-alpha3.apk | tee build/cert-check.txt
+          grep -Fqi 'certificate SHA-256 digest: a4acf0e65a1de09559ad5967261f21f33e460d682a4c5c933bed30a0c3985419' build/cert-check.txt
       - uses: actions/upload-artifact@v4
         with:
           name: MORPHIES-Android-v0.3
-          path: build/MORPHIES-v0.3-alpha2.apk
+          path: build/MORPHIES-v0.3-alpha3.apk
       - name: Publish direct APK for testing
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "android-0.3-alpha.2-${{ github.run_id }}" "build/MORPHIES-v0.3-alpha2.apk" --title "MORPHIES 0.3-alpha.2 Android test" --notes "Prototype with custom launcher icon. Not a production-signed build." --prerelease
+          gh release create "android-0.3-alpha.3-${{ github.run_id }}" "build/MORPHIES-v0.3-alpha3.apk" --title "MORPHIES 0.3-alpha.3 Android test" --notes "Test version signed with the dedicated persistent game key; not a Google Play release." --prerelease
