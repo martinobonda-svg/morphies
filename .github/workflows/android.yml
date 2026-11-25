@@ -42,7 +42,7 @@ jobs:
           pathlib.Path('build/res/drawable-nodpi/app_icon.png').write_bytes(base64.b64decode(json.loads(pathlib.Path('art/launcher.json').read_text())['png'],validate=True))
           PY
           cat > build/AndroidManifest.xml <<'EOF'
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.morphies.miniarena" android:versionCode="6" android:versionName="0.4-alpha.1">
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.morphies.miniarena" android:versionCode="7" android:versionName="0.5-alpha.1">
             <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="35"/>
             <uses-permission android:name="android.permission.VIBRATE"/>
             <application android:label="MORPHIES" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:allowBackup="false" android:icon="@drawable/app_icon" android:roundIcon="@drawable/app_icon">
@@ -78,6 +78,7 @@ jobs:
             @Override protected void onResume(){super.onResume();if(game!=null){game.onResume();game.resumeTimers();}}
           }
           EOF
+          node -e 'const fs=require("fs"),vm=require("vm"); const h=fs.readFileSync("build/assets/index.html","utf8"); for(const x of h.matchAll(/<script>([\s\S]*?)<\/script>/g)) new vm.Script(x[1]);'
           javac -source 8 -target 8 -classpath "$JAR" -d build/classes build/MainActivity.java
           "$BT/d8" --lib "$JAR" --min-api 23 --output build/dex build/classes/com/morphies/miniarena/MainActivity.class
           "$BT/aapt2" compile --dir build/res -o build/resources.zip
@@ -95,16 +96,16 @@ jobs:
           export KS_PASS="$(python3 -c 'import json, os; print(json.loads(os.environ["SIGNING_CONFIG"])["password"])')"
           echo "::add-mask::$KS_PASS"
           unset SIGNING_CONFIG
-          "$BT/apksigner" sign --ks build/signing.p12 --ks-key-alias game-release --ks-pass env:KS_PASS --key-pass env:KS_PASS --out build/MORPHIES-v0.4-alpha1.apk build/aligned.apk
+          "$BT/apksigner" sign --ks build/signing.p12 --ks-key-alias game-release --ks-pass env:KS_PASS --key-pass env:KS_PASS --out build/MORPHIES-v0.5-alpha1.apk build/aligned.apk
           unset KS_PASS
-          "$BT/apksigner" verify --verbose --print-certs build/MORPHIES-v0.4-alpha1.apk | tee build/cert-check.txt
+          "$BT/apksigner" verify --verbose --print-certs build/MORPHIES-v0.5-alpha1.apk | tee build/cert-check.txt
           grep -Fqi 'certificate SHA-256 digest: a4acf0e65a1de09559ad5967261f21f33e460d682a4c5c933bed30a0c3985419' build/cert-check.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: MORPHIES-Android-v0.4
-          path: build/MORPHIES-v0.4-alpha1.apk
+          name: MORPHIES-Android-v0.5
+          path: build/MORPHIES-v0.5-alpha1.apk
       - name: Publish direct APK for testing
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "android-0.4-alpha.1-${{ github.run_id }}" "build/MORPHIES-v0.4-alpha1.apk" --title "MORPHIES 0.4-alpha.1 Android test" --notes "Illustrated visual update. Persistent signing certificate checked. Not a Google Play release." --prerelease
+          gh release create "android-0.5-alpha.1-${{ github.run_id }}" "build/MORPHIES-v0.5-alpha1.apk" --title "MORPHIES 0.5-alpha.1 Android test" --notes "Illustrated visual update. Persistent signing certificate checked. Not a Google Play release." --prerelease
