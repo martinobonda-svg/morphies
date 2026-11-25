@@ -6,7 +6,7 @@ on:
       - '.github/workflows/android.yml'
       - 'index.html'
 permissions:
-  contents: read
+  contents: write
 jobs:
   apk:
     runs-on: ubuntu-latest
@@ -24,13 +24,27 @@ jobs:
           "$SDK/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
           BT="$SDK/build-tools/35.0.0"
           JAR="$SDK/platforms/android-35/android.jar"
-          mkdir -p build/assets build/classes build/dex
+          mkdir -p build/assets build/classes build/dex build/res/drawable
           cp index.html build/assets/index.html
+          cat > build/res/drawable/app_icon.xml <<'EOF'
+          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+          <path android:fillColor="#9ACB8B" android:pathData="M0,0H108V108H0Z"/>
+          <path android:fillColor="#C8E6A8" android:pathData="M0,83Q28,64 53,81T108,74V108H0Z"/>
+          <path android:fillColor="#4B8BC8" android:strokeColor="#343A48" android:strokeWidth="3" android:pathData="M23,66Q12,76 21,90H61Q74,76 61,66Z"/>
+          <path android:fillColor="#8ED0F6" android:strokeColor="#343A48" android:strokeWidth="3.5" android:pathData="M14,51Q12,18 41,15Q70,14 72,43L71,62Q62,75 41,75Q17,74 14,51Z"/>
+          <path android:fillColor="#FFF0CB" android:strokeColor="#343A48" android:strokeWidth="2.5" android:pathData="M22,45Q43,39 64,45V59Q61,68 43,68Q26,68 22,59Z"/>
+          <path android:fillColor="#343A48" android:pathData="M30,52a3,5 0,1 0,6 0a3,5 0,1 0,-6 0M49,52a3,5 0,1 0,6 0a3,5 0,1 0,-6 0"/>
+          <path android:fillColor="#D3EFFF" android:pathData="M23,33Q30,22 42,22Q46,23 42,27Q31,28 27,37Z"/>
+          <path android:fillColor="#F4A056" android:strokeColor="#343A48" android:strokeWidth="3" android:strokeLineJoin="round" android:pathData="M66,70Q58,49 72,53L77,61L86,49L91,63Q104,71 97,84Q94,93 81,93Q65,94 63,83Z"/>
+          <path android:fillColor="#343A48" android:pathData="M72,74a2.6,3.5 0,1 0,5.2 0a2.6,3.5 0,1 0,-5.2 0M85,74a2.6,3.5 0,1 0,5.2 0a2.6,3.5 0,1 0,-5.2 0"/>
+          <path android:strokeColor="#343A48" android:strokeWidth="2" android:strokeLineCap="round" android:pathData="M78,83Q81,86 84,83"/>
+          </vector>
+          EOF
           cat > build/AndroidManifest.xml <<'EOF'
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.morphies.miniarena" android:versionCode="3" android:versionName="0.3-alpha.1">
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.morphies.miniarena" android:versionCode="4" android:versionName="0.3-alpha.2">
             <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="35"/>
             <uses-permission android:name="android.permission.VIBRATE"/>
-            <application android:label="MORPHIES" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:allowBackup="false">
+            <application android:label="MORPHIES" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:allowBackup="false" android:icon="@drawable/app_icon" android:roundIcon="@drawable/app_icon">
               <activity android:name=".MainActivity" android:exported="true" android:screenOrientation="portrait">
                 <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
               </activity>
@@ -65,13 +79,19 @@ jobs:
           EOF
           javac -source 8 -target 8 -classpath "$JAR" -d build/classes build/MainActivity.java
           "$BT/d8" --lib "$JAR" --min-api 23 --output build/dex build/classes/com/morphies/miniarena/MainActivity.class
-          "$BT/aapt2" link -I "$JAR" --manifest build/AndroidManifest.xml -A build/assets -o build/unsigned.apk
+          "$BT/aapt2" compile --dir build/res -o build/resources.zip
+          "$BT/aapt2" link -I "$JAR" --manifest build/AndroidManifest.xml -A build/assets -o build/unsigned.apk build/resources.zip
           (cd build/dex && zip -j ../unsigned.apk classes.dex)
           "$BT/zipalign" -f -p 4 build/unsigned.apk build/aligned.apk
           keytool -genkeypair -keystore build/debug.jks -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Morphies Debug"
-          "$BT/apksigner" sign --ks build/debug.jks --ks-pass pass:android --key-pass pass:android --out build/MORPHIES-v0.3-alpha1.apk build/aligned.apk
-          "$BT/apksigner" verify --verbose build/MORPHIES-v0.3-alpha1.apk
+          "$BT/apksigner" sign --ks build/debug.jks --ks-pass pass:android --key-pass pass:android --out build/MORPHIES-v0.3-alpha2.apk build/aligned.apk
+          "$BT/apksigner" verify --verbose build/MORPHIES-v0.3-alpha2.apk
       - uses: actions/upload-artifact@v4
         with:
           name: MORPHIES-Android-v0.3
-          path: build/MORPHIES-v0.3-alpha1.apk
+          path: build/MORPHIES-v0.3-alpha2.apk
+      - name: Publish direct APK for testing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "android-0.3-alpha.2-${{ github.run_id }}" "build/MORPHIES-v0.3-alpha2.apk" --title "MORPHIES 0.3-alpha.2 Android test" --notes "Prototype with custom launcher icon. Not a production-signed build." --prerelease
