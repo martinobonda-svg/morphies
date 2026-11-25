@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'index.html'
+      - 'art/**'
 permissions:
   contents: write
 jobs:
@@ -30,23 +31,18 @@ jobs:
           BT="$SDK/build-tools/35.0.0"
           JAR="$SDK/platforms/android-35/android.jar"
           mkdir -p build/assets build/classes build/dex build/res/drawable
-          cp index.html build/assets/index.html
-          cat > build/res/drawable/app_icon.xml <<'EOF'
-          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-          <path android:fillColor="#9ACB8B" android:pathData="M0,0H108V108H0Z"/>
-          <path android:fillColor="#C8E6A8" android:pathData="M0,83Q28,64 53,81T108,74V108H0Z"/>
-          <path android:fillColor="#4B8BC8" android:strokeColor="#343A48" android:strokeWidth="3" android:pathData="M23,66Q12,76 21,90H61Q74,76 61,66Z"/>
-          <path android:fillColor="#8ED0F6" android:strokeColor="#343A48" android:strokeWidth="3.5" android:pathData="M14,51Q12,18 41,15Q70,14 72,43L71,62Q62,75 41,75Q17,74 14,51Z"/>
-          <path android:fillColor="#FFF0CB" android:strokeColor="#343A48" android:strokeWidth="2.5" android:pathData="M22,45Q43,39 64,45V59Q61,68 43,68Q26,68 22,59Z"/>
-          <path android:fillColor="#343A48" android:pathData="M30,52a3,5 0,1 0,6 0a3,5 0,1 0,-6 0M49,52a3,5 0,1 0,6 0a3,5 0,1 0,-6 0"/>
-          <path android:fillColor="#D3EFFF" android:pathData="M23,33Q30,22 42,22Q46,23 42,27Q31,28 27,37Z"/>
-          <path android:fillColor="#F4A056" android:strokeColor="#343A48" android:strokeWidth="3" android:strokeLineJoin="round" android:pathData="M66,70Q58,49 72,53L77,61L86,49L91,63Q104,71 97,84Q94,93 81,93Q65,94 63,83Z"/>
-          <path android:fillColor="#343A48" android:pathData="M72,74a2.6,3.5 0,1 0,5.2 0a2.6,3.5 0,1 0,-5.2 0M85,74a2.6,3.5 0,1 0,5.2 0a2.6,3.5 0,1 0,-5.2 0"/>
-          <path android:strokeColor="#343A48" android:strokeWidth="2" android:strokeLineCap="round" android:pathData="M78,83Q81,86 84,83"/>
-          </vector>
-          EOF
+          python3 - <<'PY'
+          import base64, json, pathlib
+          src = pathlib.Path('index.html').read_text()
+          art = json.loads(pathlib.Path('art/sprites.json').read_text())
+          assert '/*__ART_BUNDLE__*/{}' in src
+          src = src.replace('/*__ART_BUNDLE__*/{}',json.dumps(art,separators=(',',':')),1)
+          pathlib.Path('build/assets/index.html').write_text(src)
+          pathlib.Path('build/res/drawable-nodpi').mkdir(parents=True,exist_ok=True)
+          pathlib.Path('build/res/drawable-nodpi/app_icon.png').write_bytes(base64.b64decode(json.loads(pathlib.Path('art/launcher.json').read_text())['png'],validate=True))
+          PY
           cat > build/AndroidManifest.xml <<'EOF'
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.morphies.miniarena" android:versionCode="5" android:versionName="0.3-alpha.3">
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.morphies.miniarena" android:versionCode="6" android:versionName="0.4-alpha.1">
             <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="35"/>
             <uses-permission android:name="android.permission.VIBRATE"/>
             <application android:label="MORPHIES" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:allowBackup="false" android:icon="@drawable/app_icon" android:roundIcon="@drawable/app_icon">
@@ -99,16 +95,16 @@ jobs:
           export KS_PASS="$(python3 -c 'import json, os; print(json.loads(os.environ["SIGNING_CONFIG"])["password"])')"
           echo "::add-mask::$KS_PASS"
           unset SIGNING_CONFIG
-          "$BT/apksigner" sign --ks build/signing.p12 --ks-key-alias game-release --ks-pass env:KS_PASS --key-pass env:KS_PASS --out build/MORPHIES-v0.3-alpha3.apk build/aligned.apk
+          "$BT/apksigner" sign --ks build/signing.p12 --ks-key-alias game-release --ks-pass env:KS_PASS --key-pass env:KS_PASS --out build/MORPHIES-v0.4-alpha1.apk build/aligned.apk
           unset KS_PASS
-          "$BT/apksigner" verify --verbose --print-certs build/MORPHIES-v0.3-alpha3.apk | tee build/cert-check.txt
+          "$BT/apksigner" verify --verbose --print-certs build/MORPHIES-v0.4-alpha1.apk | tee build/cert-check.txt
           grep -Fqi 'certificate SHA-256 digest: a4acf0e65a1de09559ad5967261f21f33e460d682a4c5c933bed30a0c3985419' build/cert-check.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: MORPHIES-Android-v0.3
-          path: build/MORPHIES-v0.3-alpha3.apk
+          name: MORPHIES-Android-v0.4
+          path: build/MORPHIES-v0.4-alpha1.apk
       - name: Publish direct APK for testing
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "android-0.3-alpha.3-${{ github.run_id }}" "build/MORPHIES-v0.3-alpha3.apk" --title "MORPHIES 0.3-alpha.3 Android test" --notes "Test version signed with the dedicated persistent game key; not a Google Play release." --prerelease
+          gh release create "android-0.4-alpha.1-${{ github.run_id }}" "build/MORPHIES-v0.4-alpha1.apk" --title "MORPHIES 0.4-alpha.1 Android test" --notes "Illustrated visual update. Persistent signing certificate checked. Not a Google Play release." --prerelease
