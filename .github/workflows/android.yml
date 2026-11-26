@@ -105,7 +105,7 @@ jobs:
           name: MORPHIES-Android-VV-1.0.3
           path: build/MORPHIES-VV-1.0.3.apk
       - name: Publish direct APK for testing
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/codex/android-1.0.3-arena'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
