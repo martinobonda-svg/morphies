@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Android APK for mobile testing
 on:
   workflow_dispatch:
   push:
